@@ -26,30 +26,33 @@ fn main() -> Result<()> {
 
     let lines: Vec<String> = br
         .lines()
-        .collect::<std::result::Result<Vec<String>, std::io::Error>>()
-        .context(Io {
-            filename: "data/day01/input".to_owned(),
-        })?;
+        .map(|l| {
+            l.context(Io {
+                filename: "data/day01/input".to_owned(),
+            })
+        })
+        .collect::<Result<Vec<String>>>()?;
 
     let numbers: Vec<u64> = lines
         .iter()
-        .map(|v| v.parse())
-        .collect::<std::result::Result<Vec<_>, std::num::ParseIntError>>()
-        .context(ParseNumber)?;
+        .map(|v| v.parse().context(ParseNumber))
+        .collect::<Result<Vec<_>>>()?;
 
-    for a in &numbers {
+    'outer2: for a in &numbers {
         for b in &numbers {
             if (a + b) == 2020 {
                 println!("{} * {} = {}", a, b, a * b);
+                break 'outer2;
             }
         }
     }
 
-    for a in &numbers {
+    'outer3: for a in &numbers {
         for b in &numbers {
             for c in &numbers {
                 if (a + b + c) == 2020 {
                     println!("{} * {} * {} = {}", a, b, c, a * b * c);
+                    break 'outer3;
                 }
             }
         }
