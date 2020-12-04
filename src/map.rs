@@ -37,25 +37,24 @@ impl<T: MapTile> Map<T> {
     }
 
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
-        let (imin, imax, jmin, jmax) = self.get_extent();
+        let (height, width) = self.get_extent();
 
-        (imin..=imax)
-            .map(|i| (jmin..=jmax).map(|j| self.get(&(i, j)).cloned()).collect())
+        (0..height)
+            .map(|i| (0..width).map(|j| self.get(&(i, j)).cloned()).collect())
             .collect()
     }
 }
 
 impl<T> Map<T> {
-    pub fn get_extent(&self) -> (usize, usize, usize, usize) {
-        let (mut imin, mut jmin) = self.data.keys().next().unwrap();
-        let (mut imax, mut jmax) = (imin, jmin);
+    pub fn new() -> Self {
+        Map {
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn get_extent(&self) -> (usize, usize) {
+        let (mut imax, mut jmax) = self.data.keys().next().unwrap();
         for (i, j) in self.data.keys() {
-            if *i < imin {
-                imin = *i;
-            }
-            if *j < jmin {
-                jmin = *j;
-            }
             if *i > imax {
                 imax = *i;
             }
@@ -64,7 +63,7 @@ impl<T> Map<T> {
             }
         }
 
-        (imin, imax, jmin, jmax)
+        (imax + 1, jmax + 1)
     }
 }
 
@@ -88,10 +87,10 @@ impl<T: MapTile> std::fmt::Display for Map<T> {
             return Ok(());
         }
 
-        let (imin, imax, jmin, jmax) = self.get_extent();
+        let (height, width) = self.get_extent();
 
-        for i in imin..=imax {
-            for j in jmin..=jmax {
+        for i in 0..height {
+            for j in 0..width {
                 match self.data.get(&(i, j)) {
                     Some(t) => t.fmt(f),
                     None => write!(f, " "),
@@ -126,9 +125,11 @@ mod tests {
     }
 
     #[test]
-    fn test_it_works() {
+    fn test_parsing() {
         let map_string = "ab \nd e";
         let map: Map<TestTile> = Map::read(&mut map_string.as_bytes()).unwrap();
+
+        assert_eq!(map.get_extent(), (2, 3));
 
         assert_eq!(
             map.to_vecs(),
@@ -140,10 +141,42 @@ mod tests {
     }
 
     #[test]
+    fn test_editing() {
+        let mut map: Map<TestTile> = Map::new();
+
+        assert_eq!(map.get(&(1, 2)), None);
+        map.insert((1, 2), TestTile('a'));
+        assert_eq!(map.get(&(1, 2)), Some(&TestTile('a')));
+
+        map.insert((4, 1), TestTile('c'));
+        assert_eq!(map.get_extent(), (5, 3));
+
+        map.insert((8, 8), TestTile('d'));
+        assert_eq!(map.get_extent(), (9, 9));
+
+        map.remove(&(8, 8));
+        assert_eq!(map.get_extent(), (5, 3));
+
+        assert_eq!(
+            map.to_vecs(),
+            vec![
+                vec![None, None, None],
+                vec![None, None, Some(TestTile('a'))],
+                vec![None, None, None],
+                vec![None, None, None],
+                vec![None, Some(TestTile('c')), None],
+            ]
+        )
+    }
+
+    #[test]
     fn test_display() {
         let map_string = "ab \nd e";
         let map: Map<TestTile> = Map::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(format!("{}", map), format!("{}\n", map_string));
+
+        let map2: Map<TestTile> = Map::new();
+        assert_eq!(format!("{}", map2), "");
     }
 }

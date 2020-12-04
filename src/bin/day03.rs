@@ -49,12 +49,12 @@ impl std::fmt::Display for Tile {
 }
 
 fn count_trees(map: &mut Map<Tile>, di: usize, dj: usize) -> usize {
-    let (_imin, imax, _jmin, jmax) = map.get_extent();
+    let (height, width) = map.get_extent();
     let mut i = 0;
     let mut j = 0;
     let mut hit_trees = 0;
 
-    while i <= imax {
+    while i < height {
         let current = { map.get(&(i, j)).cloned() };
 
         map.insert(
@@ -70,7 +70,7 @@ fn count_trees(map: &mut Map<Tile>, di: usize, dj: usize) -> usize {
         );
 
         i += di;
-        j = (j + dj) % (jmax + 1);
+        j = (j + dj) % width;
     }
 
     hit_trees
