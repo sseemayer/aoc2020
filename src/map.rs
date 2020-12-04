@@ -138,4 +138,12 @@ mod tests {
             ]
         )
     }
+
+    #[test]
+    fn test_display() {
+        let map_string = "ab \nd e";
+        let map: Map<TestTile> = Map::read(&mut map_string.as_bytes()).unwrap();
+
+        assert_eq!(format!("{}", map), format!("{}\n", map_string));
+    }
 }
