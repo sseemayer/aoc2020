@@ -2,7 +2,7 @@ use std::fs::File;
 
 use snafu::{ResultExt, Snafu};
 
-use aoc2020::map::{Coords, MapError, Tile, TileMap};
+use aoc2020::map::{Map, MapError, MapTile};
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -13,43 +13,43 @@ enum Error {
     },
 
     #[snafu(display("Map error: {}", source))]
-    Map { source: MapError },
+    MapLoading { source: MapError },
 }
 
 type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum MapTile {
+enum Tile {
     Tree,
     PathEmpty,
     PathTree,
 }
 
-impl Tile for MapTile {
+impl MapTile for Tile {
     fn from_char(c: char) -> Option<Self> {
         match c {
-            '#' => Some(MapTile::Tree),
+            '#' => Some(Tile::Tree),
             _ => None,
         }
     }
 }
 
-impl std::fmt::Display for MapTile {
+impl std::fmt::Display for Tile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                MapTile::Tree => "#",
-                MapTile::PathEmpty => "O",
-                MapTile::PathTree => "X",
+                Tile::Tree => "#",
+                Tile::PathEmpty => "O",
+                Tile::PathTree => "X",
             }
         )
     }
 }
 
-fn count_trees(map: &mut TileMap<MapTile>, di: usize, dj: usize) -> usize {
-    let (imin, imax, jmin, jmax) = map.get_extent();
+fn count_trees(map: &mut Map<Tile>, di: usize, dj: usize) -> usize {
+    let (_imin, imax, _jmin, jmax) = map.get_extent();
     let mut i = 0;
     let mut j = 0;
     let mut hit_trees = 0;
@@ -60,10 +60,10 @@ fn count_trees(map: &mut TileMap<MapTile>, di: usize, dj: usize) -> usize {
         map.insert(
             (i, j),
             match current {
-                None => MapTile::PathEmpty,
-                Some(MapTile::Tree) => {
+                None => Tile::PathEmpty,
+                Some(Tile::Tree) => {
                     hit_trees += 1;
-                    MapTile::PathTree
+                    Tile::PathTree
                 }
                 _ => unreachable!(),
             },
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
         filename: filename.to_string(),
     })?;
 
-    let map = TileMap::<MapTile>::read(&mut f).context(Map)?;
+    let map = Map::<Tile>::read(&mut f).context(MapLoading)?;
     let recipes = vec![(1, 1), (1, 3), (1, 5), (1, 7), (2, 1)];
     let mut product = 1;
     for (di, dj) in recipes {
