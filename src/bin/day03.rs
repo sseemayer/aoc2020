@@ -48,7 +48,7 @@ impl std::fmt::Display for Tile {
     }
 }
 
-fn count_trees(map: &mut Map<Tile>, di: usize, dj: usize) -> usize {
+fn count_trees(map: &mut Map<(usize, usize), Tile>, di: usize, dj: usize) -> usize {
     let (height, width) = map.get_extent();
     let mut i = 0;
     let mut j = 0;
@@ -57,7 +57,7 @@ fn count_trees(map: &mut Map<Tile>, di: usize, dj: usize) -> usize {
     while i < height {
         let current = { map.get(&(i, j)).cloned() };
 
-        map.insert(
+        map.set(
             (i, j),
             match current {
                 None => Tile::PathEmpty,
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
         filename: filename.to_string(),
     })?;
 
-    let map = Map::<Tile>::read(&mut f).context(MapLoading)?;
+    let map = Map::<(usize, usize), Tile>::read(&mut f).context(MapLoading)?;
     let recipes = vec![(1, 1), (1, 3), (1, 5), (1, 7), (2, 1)];
     let mut product = 1;
     for (di, dj) in recipes {

@@ -7,6 +7,29 @@ pub trait MapTile: std::fmt::Display + Sized + Clone {
     fn from_char(c: char) -> Option<Self>;
 }
 
+pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone {
+    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self;
+}
+
+impl MapCoordinate for usize {
+    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self {
+        keys.max().map(|s| s + 1).unwrap_or(0)
+    }
+}
+
+impl MapCoordinate for (usize, usize) {
+    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self {
+        let mut imax = 0;
+        let mut jmax = 0;
+        for k in keys {
+            imax = imax.max(k.0 + 1);
+            jmax = jmax.max(k.1 + 1);
+        }
+
+        return (imax, jmax);
+    }
+}
+
 #[derive(Debug, Snafu)]
 pub enum MapError {
     #[snafu(display("I/O error: {}", source))]
@@ -16,11 +39,79 @@ pub enum MapError {
 type MapResult<T> = std::result::Result<T, MapError>;
 
 #[derive(Default, Debug, Clone)]
-pub struct Map<T> {
-    data: HashMap<(usize, usize), T>,
+pub struct Map<C: MapCoordinate, T> {
+    data: HashMap<C, T>,
 }
 
-impl<T: MapTile> Map<T> {
+impl<C: MapCoordinate, T> Map<C, T> {
+    pub fn new() -> Self {
+        Map {
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, coord: &C) -> Option<&T> {
+        self.data.get(coord)
+    }
+
+    pub fn set(&mut self, coord: C, value: T) {
+        self.data.insert(coord, value);
+    }
+
+    pub fn remove(&mut self, coord: &C) {
+        self.data.remove(coord);
+    }
+
+    pub fn get_extent(&self) -> C {
+        C::get_extent(self.data.keys().cloned())
+    }
+}
+
+////// Code for 1D maps
+impl<T: MapTile> Map<usize, T> {
+    pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
+        let mut data = HashMap::new();
+
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).context(Io)?;
+
+        let s = String::from_utf8_lossy(&buf);
+
+        for (i, c) in s.chars().enumerate() {
+            if let Some(t) = T::from_char(c) {
+                data.insert(i, t);
+            }
+        }
+
+        Ok(Map { data })
+    }
+
+    pub fn to_vecs(&self) -> Vec<Option<T>> {
+        let width = self.get_extent();
+        (0..width).map(|i| self.data.get(&i).cloned()).collect()
+    }
+}
+
+impl<T: MapTile> std::fmt::Display for Map<usize, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+        if self.data.is_empty() {
+            return Ok(());
+        }
+
+        let width = self.get_extent();
+        for i in 0..width {
+            match self.data.get(&i) {
+                Some(t) => t.fmt(f),
+                None => write!(f, " "),
+            }?;
+        }
+
+        Ok(())
+    }
+}
+
+////// Code for 2D maps
+impl<T: MapTile> Map<(usize, usize), T> {
     pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
         let mut data = HashMap::new();
 
@@ -40,48 +131,16 @@ impl<T: MapTile> Map<T> {
         let (height, width) = self.get_extent();
 
         (0..height)
-            .map(|i| (0..width).map(|j| self.get(&(i, j)).cloned()).collect())
+            .map(|i| {
+                (0..width)
+                    .map(|j| self.data.get(&(i, j)).cloned())
+                    .collect()
+            })
             .collect()
     }
 }
 
-impl<T> Map<T> {
-    pub fn new() -> Self {
-        Map {
-            data: HashMap::new(),
-        }
-    }
-
-    pub fn get_extent(&self) -> (usize, usize) {
-        let (mut imax, mut jmax) = self.data.keys().next().unwrap();
-        for (i, j) in self.data.keys() {
-            if *i > imax {
-                imax = *i;
-            }
-            if *j > jmax {
-                jmax = *j;
-            }
-        }
-
-        (imax + 1, jmax + 1)
-    }
-}
-
-impl<T> std::ops::Deref for Map<T> {
-    type Target = HashMap<(usize, usize), T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> std::ops::DerefMut for Map<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-impl<T: MapTile> std::fmt::Display for Map<T> {
+impl<T: MapTile> std::fmt::Display for Map<(usize, usize), T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
         if self.data.is_empty() {
             return Ok(());
@@ -125,9 +184,65 @@ mod tests {
     }
 
     #[test]
-    fn test_parsing() {
+    fn test_1d_parsing() {
+        let map_string = "ab d f";
+        let map = Map::<usize, TestTile>::read(&mut map_string.as_bytes()).unwrap();
+
+        assert_eq!(map.get_extent(), 6);
+
+        assert_eq!(
+            map.to_vecs(),
+            vec![
+                Some(TestTile('a')),
+                Some(TestTile('b')),
+                None,
+                Some(TestTile('d')),
+                None,
+                Some(TestTile('f'))
+            ],
+        )
+    }
+
+    #[test]
+    fn test_1d_editing() {
+        let mut map: Map<usize, TestTile> = Map::new();
+        assert_eq!(map.get_extent(), 0);
+
+        assert_eq!(map.get(&1), None);
+        map.set(1, TestTile('a'));
+        assert_eq!(map.get(&1), Some(&TestTile('a')));
+        assert_eq!(map.get_extent(), 2);
+
+        map.set(4, TestTile('c'));
+        assert_eq!(map.get_extent(), 5);
+
+        map.set(8, TestTile('d'));
+        assert_eq!(map.get_extent(), 9);
+
+        map.remove(&8);
+        assert_eq!(map.get_extent(), 5);
+
+        assert_eq!(
+            map.to_vecs(),
+            vec![None, Some(TestTile('a')), None, None, Some(TestTile('c'))]
+        )
+    }
+
+    #[test]
+    fn test_1d_display() {
+        let map_string = "ab d f";
+        let map = Map::<usize, TestTile>::read(&mut map_string.as_bytes()).unwrap();
+
+        assert_eq!(format!("{}", map), format!("{}", map_string));
+
+        let map2: Map<usize, TestTile> = Map::new();
+        assert_eq!(format!("{}", map2), "");
+    }
+
+    #[test]
+    fn test_2d_parsing() {
         let map_string = "ab \nd e";
-        let map: Map<TestTile> = Map::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<(usize, usize), TestTile>::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(map.get_extent(), (2, 3));
 
@@ -141,17 +256,17 @@ mod tests {
     }
 
     #[test]
-    fn test_editing() {
-        let mut map: Map<TestTile> = Map::new();
+    fn test_2d_editing() {
+        let mut map: Map<(usize, usize), TestTile> = Map::new();
 
         assert_eq!(map.get(&(1, 2)), None);
-        map.insert((1, 2), TestTile('a'));
+        map.set((1, 2), TestTile('a'));
         assert_eq!(map.get(&(1, 2)), Some(&TestTile('a')));
 
-        map.insert((4, 1), TestTile('c'));
+        map.set((4, 1), TestTile('c'));
         assert_eq!(map.get_extent(), (5, 3));
 
-        map.insert((8, 8), TestTile('d'));
+        map.set((8, 8), TestTile('d'));
         assert_eq!(map.get_extent(), (9, 9));
 
         map.remove(&(8, 8));
@@ -170,13 +285,13 @@ mod tests {
     }
 
     #[test]
-    fn test_display() {
+    fn test_2d_display() {
         let map_string = "ab \nd e";
-        let map: Map<TestTile> = Map::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<(usize, usize), TestTile>::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(format!("{}", map), format!("{}\n", map_string));
 
-        let map2: Map<TestTile> = Map::new();
+        let map2: Map<(usize, usize), TestTile> = Map::new();
         assert_eq!(format!("{}", map2), "");
     }
 }
