@@ -88,11 +88,18 @@ mod tests {
 
     #[test]
     fn test_group_parsing() {
-        let data = "aabbc\ndg\n\nfh";
+        let data = "aabbc\nadg\n\nfh";
         assert_eq!(
-            parse_groups(&mut data.as_bytes()).unwrap(),
+            parse_groups(&mut data.as_bytes(), GroupMode::Union).unwrap(),
             vec![
                 BitSet::from_bytes(&[0b11110010]),
+                BitSet::from_bytes(&[0b00000101]),
+            ]
+        );
+        assert_eq!(
+            parse_groups(&mut data.as_bytes(), GroupMode::Intersection).unwrap(),
+            vec![
+                BitSet::from_bytes(&[0b10000000]),
                 BitSet::from_bytes(&[0b00000101]),
             ]
         );
