@@ -1,7 +1,4 @@
-use std::{
-    io::{BufRead, BufReader, Read},
-    ops::Range,
-};
+use std::io::{BufRead, BufReader, Read};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 
