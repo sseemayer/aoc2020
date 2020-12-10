@@ -1,6 +1,6 @@
 use snafu::{ResultExt, Snafu};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader};
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -38,7 +38,7 @@ fn validate(numbers: &[usize], window_size: usize) -> Option<usize> {
 
 fn find_summands(numbers: &[usize], target: usize) -> Option<Vec<usize>> {
     let mut out = Vec::new();
-    let mut sum = 0;
+    let mut sum;
 
     for i in 0..numbers.len() {
         out.clear();
