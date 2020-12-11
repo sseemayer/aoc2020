@@ -38,9 +38,9 @@ pub enum MapError {
 
 type MapResult<T> = std::result::Result<T, MapError>;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct Map<C: MapCoordinate, T> {
-    data: HashMap<C, T>,
+    pub data: HashMap<C, T>,
 }
 
 impl<C: MapCoordinate, T> Map<C, T> {
