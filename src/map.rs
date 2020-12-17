@@ -41,29 +41,72 @@ type MapResult<T> = std::result::Result<T, MapError>;
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct Map<C: MapCoordinate, T> {
     pub data: HashMap<C, T>,
+    pub fixed_extent: Option<C>,
 }
 
 impl<C: MapCoordinate, T> Map<C, T> {
     pub fn new() -> Self {
         Map {
             data: HashMap::new(),
+            fixed_extent: None,
         }
     }
 
+    /// Get the tile at a coordinate
     pub fn get(&self, coord: &C) -> Option<&T> {
         self.data.get(coord)
     }
 
+    /// Set the tile at a coordinate
     pub fn set(&mut self, coord: C, value: T) {
         self.data.insert(coord, value);
     }
 
+    /// Clear a coordinate from tiles
     pub fn remove(&mut self, coord: &C) {
         self.data.remove(coord);
     }
 
+    /// Get the maximum dimension for all defined tiles
     pub fn get_extent(&self) -> C {
-        C::get_extent(self.data.keys().cloned())
+        if let Some(e) = &self.fixed_extent {
+            e.clone()
+        } else {
+            C::get_extent(self.data.keys().cloned())
+        }
+    }
+
+    /// Find all coordinates that match a predicate
+    pub fn find_all_where<P: Fn(&C, &T) -> bool>(&self, predicate: P) -> Vec<C> {
+        let mut out: Vec<C> = Vec::new();
+        for (coord, tile) in self.data.iter() {
+            if predicate(coord, tile) {
+                out.push(coord.clone());
+            }
+        }
+        out
+    }
+
+    /// Find a coordinate that matches a predicate
+    pub fn find_one_where<P: Fn(&C, &T) -> bool>(&self, predicate: P) -> Option<C> {
+        for (coord, tile) in self.data.iter() {
+            if predicate(coord, tile) {
+                return Some(coord.clone());
+            }
+        }
+        None
+    }
+}
+
+impl<C: MapCoordinate, T: Eq> Map<C, T> {
+    /// Find all coordinates that contain a tile
+    pub fn find_all(&self, pattern: &T) -> Vec<C> {
+        self.find_all_where(|_, t| t == pattern)
+    }
+
+    /// Find one coordinate that contains a tile
+    pub fn find_one(&self, pattern: &T) -> Option<C> {
+        self.find_one_where(|_, t| t == pattern)
     }
 }
 
@@ -83,7 +126,10 @@ impl<T: MapTile> Map<usize, T> {
             }
         }
 
-        Ok(Map { data })
+        Ok(Map {
+            data,
+            fixed_extent: None,
+        })
     }
 
     pub fn to_vecs(&self) -> Vec<Option<T>> {
@@ -124,7 +170,10 @@ impl<T: MapTile> Map<(usize, usize), T> {
             }
         }
 
-        Ok(Map { data })
+        Ok(Map {
+            data,
+            fixed_extent: None,
+        })
     }
 
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
@@ -159,6 +208,14 @@ impl<T: MapTile> std::fmt::Display for Map<(usize, usize), T> {
         }
 
         Ok(())
+    }
+}
+
+impl<T: MapTile> std::str::FromStr for Map<(usize, usize), T> {
+    type Err = MapError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Map::<(usize, usize), T>::read(&mut s.as_bytes())
     }
 }
 
