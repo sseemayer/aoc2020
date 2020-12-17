@@ -3,30 +3,74 @@ use std::collections::HashMap;
 use snafu::{ResultExt, Snafu};
 use std::io::{BufRead, BufReader};
 
+pub trait IntCoord:
+    num::PrimInt + num::FromPrimitive + std::fmt::Debug + std::default::Default + std::hash::Hash
+{
+}
+
+impl<T> IntCoord for T where
+    T: num::PrimInt
+        + num::FromPrimitive
+        + num::ToPrimitive
+        + std::marker::Copy
+        + std::fmt::Debug
+        + std::default::Default
+        + std::hash::Hash
+{
+}
+
 pub trait MapTile: std::fmt::Display + Sized + Clone {
     fn from_char(c: char) -> Option<Self>;
 }
 
-pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone {
-    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self;
-}
+pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone + Copy {
+    fn elementwise_min(a: Self, b: Self) -> Self;
+    fn elementwise_max(a: Self, b: Self) -> Self;
 
-impl MapCoordinate for usize {
-    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self {
-        keys.max().map(|s| s + 1).unwrap_or(0)
+    fn get_extent<'a>(mut keys: impl Iterator<Item = Self>) -> (Self, Self) {
+        let mut min = keys.next().unwrap_or(Default::default());
+        let mut max = min.clone();
+
+        for k in keys {
+            min = MapCoordinate::elementwise_min(min, k);
+            max = MapCoordinate::elementwise_max(max, k);
+        }
+
+        (min, max)
     }
 }
 
-impl MapCoordinate for (usize, usize) {
-    fn get_extent<'a>(keys: impl Iterator<Item = Self>) -> Self {
-        let mut imax = 0;
-        let mut jmax = 0;
-        for k in keys {
-            imax = imax.max(k.0 + 1);
-            jmax = jmax.max(k.1 + 1);
-        }
+impl<I> MapCoordinate for (I, I)
+where
+    I: IntCoord,
+{
+    fn elementwise_min(a: Self, b: Self) -> Self {
+        (std::cmp::min(a.0, b.0), std::cmp::min(a.1, b.1))
+    }
 
-        return (imax, jmax);
+    fn elementwise_max(a: Self, b: Self) -> Self {
+        (std::cmp::max(a.0, b.0), std::cmp::max(a.1, b.1))
+    }
+}
+
+impl<I> MapCoordinate for (I, I, I)
+where
+    I: IntCoord,
+{
+    fn elementwise_min(a: Self, b: Self) -> Self {
+        (
+            std::cmp::min(a.0, b.0),
+            std::cmp::min(a.1, b.1),
+            std::cmp::min(a.2, b.2),
+        )
+    }
+
+    fn elementwise_max(a: Self, b: Self) -> Self {
+        (
+            std::cmp::max(a.0, b.0),
+            std::cmp::max(a.1, b.1),
+            std::cmp::max(a.2, b.2),
+        )
     }
 }
 
@@ -41,7 +85,7 @@ type MapResult<T> = std::result::Result<T, MapError>;
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct Map<C: MapCoordinate, T> {
     pub data: HashMap<C, T>,
-    pub fixed_extent: Option<C>,
+    pub fixed_extent: Option<(C, C)>,
 }
 
 impl<C: MapCoordinate, T> Map<C, T> {
@@ -68,7 +112,7 @@ impl<C: MapCoordinate, T> Map<C, T> {
     }
 
     /// Get the maximum dimension for all defined tiles
-    pub fn get_extent(&self) -> C {
+    pub fn get_extent(&self) -> (C, C) {
         if let Some(e) = &self.fixed_extent {
             e.clone()
         } else {
@@ -110,62 +154,22 @@ impl<C: MapCoordinate, T: Eq> Map<C, T> {
     }
 }
 
-////// Code for 1D maps
-impl<T: MapTile> Map<usize, T> {
-    pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
-        let mut data = HashMap::new();
-
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).context(Io)?;
-
-        let s = String::from_utf8_lossy(&buf);
-
-        for (i, c) in s.chars().enumerate() {
-            if let Some(t) = T::from_char(c) {
-                data.insert(i, t);
-            }
-        }
-
-        Ok(Map {
-            data,
-            fixed_extent: None,
-        })
-    }
-
-    pub fn to_vecs(&self) -> Vec<Option<T>> {
-        let width = self.get_extent();
-        (0..width).map(|i| self.data.get(&i).cloned()).collect()
-    }
-}
-
-impl<T: MapTile> std::fmt::Display for Map<usize, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-        if self.data.is_empty() {
-            return Ok(());
-        }
-
-        let width = self.get_extent();
-        for i in 0..width {
-            match self.data.get(&i) {
-                Some(t) => t.fmt(f),
-                None => write!(f, " "),
-            }?;
-        }
-
-        Ok(())
-    }
-}
-
 ////// Code for 2D maps
-impl<T: MapTile> Map<(usize, usize), T> {
+impl<T, I> Map<(I, I), T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
     pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
-        let mut data = HashMap::new();
+        let mut data: HashMap<(I, I), T> = HashMap::new();
 
         let buf_reader = BufReader::new(reader);
         for (i, line) in buf_reader.lines().enumerate() {
             for (j, c) in line.context(Io)?.chars().enumerate() {
                 if let Some(t) = T::from_char(c) {
-                    data.insert((i, j), t);
+                    if let (Some(i), Some(j)) = (I::from_usize(i), I::from_usize(j)) {
+                        data.insert((i, j), t);
+                    }
                 }
             }
         }
@@ -177,11 +181,11 @@ impl<T: MapTile> Map<(usize, usize), T> {
     }
 
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
-        let (height, width) = self.get_extent();
+        let (min, max) = self.get_extent();
 
-        (0..height)
+        num::iter::range_inclusive(min.0, max.0)
             .map(|i| {
-                (0..width)
+                num::iter::range_inclusive(min.1, max.1)
                     .map(|j| self.data.get(&(i, j)).cloned())
                     .collect()
             })
@@ -189,16 +193,20 @@ impl<T: MapTile> Map<(usize, usize), T> {
     }
 }
 
-impl<T: MapTile> std::fmt::Display for Map<(usize, usize), T> {
+impl<T, I> std::fmt::Display for Map<(I, I), T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
         if self.data.is_empty() {
             return Ok(());
         }
 
-        let (height, width) = self.get_extent();
+        let (min, max) = self.get_extent();
 
-        for i in 0..height {
-            for j in 0..width {
+        for i in num::iter::range_inclusive(min.0, max.0) {
+            for j in num::iter::range_inclusive(min.1, max.1) {
                 match self.data.get(&(i, j)) {
                     Some(t) => t.fmt(f),
                     None => write!(f, " "),
@@ -211,11 +219,15 @@ impl<T: MapTile> std::fmt::Display for Map<(usize, usize), T> {
     }
 }
 
-impl<T: MapTile> std::str::FromStr for Map<(usize, usize), T> {
+impl<T, I> std::str::FromStr for Map<(I, I), T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
     type Err = MapError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Map::<(usize, usize), T>::read(&mut s.as_bytes())
+        Map::read(&mut s.as_bytes())
     }
 }
 
@@ -241,67 +253,11 @@ mod tests {
     }
 
     #[test]
-    fn test_1d_parsing() {
-        let map_string = "ab d f";
-        let map = Map::<usize, TestTile>::read(&mut map_string.as_bytes()).unwrap();
-
-        assert_eq!(map.get_extent(), 6);
-
-        assert_eq!(
-            map.to_vecs(),
-            vec![
-                Some(TestTile('a')),
-                Some(TestTile('b')),
-                None,
-                Some(TestTile('d')),
-                None,
-                Some(TestTile('f'))
-            ],
-        )
-    }
-
-    #[test]
-    fn test_1d_editing() {
-        let mut map: Map<usize, TestTile> = Map::new();
-        assert_eq!(map.get_extent(), 0);
-
-        assert_eq!(map.get(&1), None);
-        map.set(1, TestTile('a'));
-        assert_eq!(map.get(&1), Some(&TestTile('a')));
-        assert_eq!(map.get_extent(), 2);
-
-        map.set(4, TestTile('c'));
-        assert_eq!(map.get_extent(), 5);
-
-        map.set(8, TestTile('d'));
-        assert_eq!(map.get_extent(), 9);
-
-        map.remove(&8);
-        assert_eq!(map.get_extent(), 5);
-
-        assert_eq!(
-            map.to_vecs(),
-            vec![None, Some(TestTile('a')), None, None, Some(TestTile('c'))]
-        )
-    }
-
-    #[test]
-    fn test_1d_display() {
-        let map_string = "ab d f";
-        let map = Map::<usize, TestTile>::read(&mut map_string.as_bytes()).unwrap();
-
-        assert_eq!(format!("{}", map), format!("{}", map_string));
-
-        let map2: Map<usize, TestTile> = Map::new();
-        assert_eq!(format!("{}", map2), "");
-    }
-
-    #[test]
     fn test_2d_parsing() {
         let map_string = "ab \nd e";
         let map = Map::<(usize, usize), TestTile>::read(&mut map_string.as_bytes()).unwrap();
 
-        assert_eq!(map.get_extent(), (2, 3));
+        assert_eq!(map.get_extent(), ((0, 0), (1, 2)));
 
         assert_eq!(
             map.to_vecs(),
@@ -321,22 +277,21 @@ mod tests {
         assert_eq!(map.get(&(1, 2)), Some(&TestTile('a')));
 
         map.set((4, 1), TestTile('c'));
-        assert_eq!(map.get_extent(), (5, 3));
+        assert_eq!(map.get_extent(), ((1, 1), (4, 2)));
 
         map.set((8, 8), TestTile('d'));
-        assert_eq!(map.get_extent(), (9, 9));
+        assert_eq!(map.get_extent(), ((1, 1), (8, 8)));
 
         map.remove(&(8, 8));
-        assert_eq!(map.get_extent(), (5, 3));
+        assert_eq!(map.get_extent(), ((1, 1), (4, 2)));
 
         assert_eq!(
             map.to_vecs(),
             vec![
-                vec![None, None, None],
-                vec![None, None, Some(TestTile('a'))],
-                vec![None, None, None],
-                vec![None, None, None],
-                vec![None, Some(TestTile('c')), None],
+                vec![None, Some(TestTile('a'))],
+                vec![None, None],
+                vec![None, None],
+                vec![Some(TestTile('c')), None],
             ]
         )
     }
