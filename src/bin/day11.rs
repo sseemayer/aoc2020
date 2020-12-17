@@ -50,10 +50,10 @@ impl std::fmt::Display for Tile {
     }
 }
 
-fn step(map: &mut Map<(usize, usize), Tile>, cast_ray: bool, max_neighbors: usize) {
+fn step(map: &mut Map<[usize; 2], Tile>, cast_ray: bool, max_neighbors: usize) {
     // count number of per-chair neighbors
-    let mut neighbors: HashMap<(usize, usize), usize> = HashMap::new();
-    for ((i, j), tile) in map.data.iter() {
+    let mut neighbors: HashMap<[usize; 2], usize> = HashMap::new();
+    for ([i, j], tile) in map.data.iter() {
         if let Tile::Chair { .. } = tile {
             let mut n = 0;
             for idir in -1..=1 {
@@ -70,7 +70,7 @@ fn step(map: &mut Map<(usize, usize), Tile>, cast_ray: bool, max_neighbors: usiz
                             break;
                         }
 
-                        match map.get(&(ic as usize, jc as usize)) {
+                        match map.get(&[ic as usize, jc as usize]) {
                             Some(Tile::Chair { occupied }) => {
                                 if *occupied {
                                     n += 1;
@@ -89,7 +89,7 @@ fn step(map: &mut Map<(usize, usize), Tile>, cast_ray: bool, max_neighbors: usiz
                 }
             }
 
-            neighbors.insert((*i, *j), n);
+            neighbors.insert([*i, *j], n);
         }
     }
 
@@ -107,10 +107,10 @@ fn step(map: &mut Map<(usize, usize), Tile>, cast_ray: bool, max_neighbors: usiz
 }
 
 fn loop_until_stabilized(
-    mut map: Map<(usize, usize), Tile>,
+    mut map: Map<[usize; 2], Tile>,
     cast_ray: bool,
     max_neighbors: usize,
-) -> Map<(usize, usize), Tile> {
+) -> Map<[usize; 2], Tile> {
     loop {
         let map_last = map.clone();
         step(&mut map, cast_ray, max_neighbors);
@@ -121,7 +121,7 @@ fn loop_until_stabilized(
     }
 }
 
-fn count_filled_seats(map: &Map<(usize, usize), Tile>) -> usize {
+fn count_filled_seats(map: &Map<[usize; 2], Tile>) -> usize {
     let mut filled_seats = 0;
     for tile in map.data.values() {
         if let Tile::Chair { occupied: true } = tile {
@@ -137,7 +137,7 @@ fn main() -> Result<()> {
         filename: filename.to_string(),
     })?;
 
-    let map_original = Map::<(usize, usize), Tile>::read(&mut f).context(MapLoading)?;
+    let map_original = Map::<[usize; 2], Tile>::read(&mut f).context(MapLoading)?;
 
     let map1 = loop_until_stabilized(map_original.clone(), false, 4);
     println!("Part 1: Got {} filled seats", count_filled_seats(&map1));

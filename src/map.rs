@@ -42,7 +42,12 @@ pub trait ParseMapTile: MapTile {
 
 /// Trait for a generic map coordinate
 pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone + Copy {
+    /// Calculate the element-wise minimum of two coordinates.
+    /// Used for computing the extent of the map.
     fn elementwise_min(a: Self, b: Self) -> Self;
+
+    /// Calculate the element-wise maximum of two coordinates.
+    /// Used for computing the extent of the map.
     fn elementwise_max(a: Self, b: Self) -> Self;
 
     fn get_extent<'a>(mut keys: impl Iterator<Item = Self>) -> (Self, Self) {
@@ -55,40 +60,6 @@ pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clon
         }
 
         (min, max)
-    }
-}
-
-impl<I> MapCoordinate for (I, I)
-where
-    I: IntCoord,
-{
-    fn elementwise_min(a: Self, b: Self) -> Self {
-        (std::cmp::min(a.0, b.0), std::cmp::min(a.1, b.1))
-    }
-
-    fn elementwise_max(a: Self, b: Self) -> Self {
-        (std::cmp::max(a.0, b.0), std::cmp::max(a.1, b.1))
-    }
-}
-
-impl<I> MapCoordinate for (I, I, I)
-where
-    I: IntCoord,
-{
-    fn elementwise_min(a: Self, b: Self) -> Self {
-        (
-            std::cmp::min(a.0, b.0),
-            std::cmp::min(a.1, b.1),
-            std::cmp::min(a.2, b.2),
-        )
-    }
-
-    fn elementwise_max(a: Self, b: Self) -> Self {
-        (
-            std::cmp::max(a.0, b.0),
-            std::cmp::max(a.1, b.1),
-            std::cmp::max(a.2, b.2),
-        )
     }
 }
 
@@ -166,20 +137,34 @@ impl<C: MapCoordinate, T: Eq> Map<C, T> {
 }
 
 ////// Code for 2D maps
-impl<T, I> Map<(I, I), T>
+
+impl<I> MapCoordinate for [I; 2]
+where
+    I: IntCoord,
+{
+    fn elementwise_min(a: Self, b: Self) -> Self {
+        [std::cmp::min(a[0], b[0]), std::cmp::min(a[1], b[1])]
+    }
+
+    fn elementwise_max(a: Self, b: Self) -> Self {
+        [std::cmp::max(a[0], b[0]), std::cmp::max(a[1], b[1])]
+    }
+}
+
+impl<T, I> Map<[I; 2], T>
 where
     T: ParseMapTile,
     I: IntCoord,
 {
     pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
-        let mut data: HashMap<(I, I), T> = HashMap::new();
+        let mut data: HashMap<[I; 2], T> = HashMap::new();
 
         let buf_reader = BufReader::new(reader);
         for (i, line) in buf_reader.lines().enumerate() {
             for (j, c) in line.context(Io)?.chars().enumerate() {
                 if let Some(t) = T::from_char(c) {
                     if let (Some(i), Some(j)) = (I::from_usize(i), I::from_usize(j)) {
-                        data.insert((i, j), t);
+                        data.insert([i, j], t);
                     }
                 }
             }
@@ -194,17 +179,17 @@ where
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
         let (min, max) = self.get_extent();
 
-        num::iter::range_inclusive(min.0, max.0)
+        num::iter::range_inclusive(min[0], max[0])
             .map(|i| {
-                num::iter::range_inclusive(min.1, max.1)
-                    .map(|j| self.data.get(&(i, j)).cloned())
+                num::iter::range_inclusive(min[1], max[1])
+                    .map(|j| self.data.get(&[i, j]).cloned())
                     .collect()
             })
             .collect()
     }
 }
 
-impl<T, I> std::fmt::Display for Map<(I, I), T>
+impl<T, I> std::fmt::Display for Map<[I; 2], T>
 where
     T: MapTile,
     I: IntCoord,
@@ -216,9 +201,9 @@ where
 
         let (min, max) = self.get_extent();
 
-        for i in num::iter::range_inclusive(min.0, max.0) {
-            for j in num::iter::range_inclusive(min.1, max.1) {
-                match self.data.get(&(i, j)) {
+        for i in num::iter::range_inclusive(min[0], max[0]) {
+            for j in num::iter::range_inclusive(min[1], max[1]) {
+                match self.data.get(&[i, j]) {
                     Some(t) => t.fmt(f),
                     None => write!(f, " "),
                 }?;
@@ -230,7 +215,7 @@ where
     }
 }
 
-impl<T, I> std::str::FromStr for Map<(I, I), T>
+impl<T, I> std::str::FromStr for Map<[I; 2], T>
 where
     T: ParseMapTile,
     I: IntCoord,
@@ -239,6 +224,96 @@ where
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Map::read(&mut s.as_bytes())
+    }
+}
+
+////// Code for 3D maps
+
+impl<I> MapCoordinate for [I; 3]
+where
+    I: IntCoord,
+{
+    fn elementwise_min(a: Self, b: Self) -> Self {
+        [
+            std::cmp::min(a[0], b[0]),
+            std::cmp::min(a[1], b[1]),
+            std::cmp::min(a[2], b[2]),
+        ]
+    }
+
+    fn elementwise_max(a: Self, b: Self) -> Self {
+        [
+            std::cmp::max(a[0], b[0]),
+            std::cmp::max(a[1], b[1]),
+            std::cmp::max(a[2], b[2]),
+        ]
+    }
+}
+
+impl<T, I> Map<[I; 3], T>
+where
+    T: ParseMapTile,
+    I: IntCoord,
+{
+    /// Convert a 2D map to a single-layered 3D map
+    pub fn from_2d(map: &Map<[I; 2], T>) -> Self {
+        let data: HashMap<[I; 3], T> = map
+            .data
+            .iter()
+            .map(|(key, tile)| {
+                let key = [I::zero(), key[0], key[1]];
+                (key, tile.clone())
+            })
+            .collect();
+
+        Map {
+            data,
+            fixed_extent: None,
+        }
+    }
+
+    /// Slice a 3D map into a 2D map along one dimension
+    pub fn slice(&self, i: I, axis: usize) -> Map<[I; 2], T> {
+        let (ax0, ax1) = match axis {
+            0 => (1, 2),
+            1 => (0, 2),
+            2 => (0, 1),
+            _ => panic!("Invalid axis: {}", axis),
+        };
+
+        let data: HashMap<[I; 2], T> = self
+            .data
+            .iter()
+            .filter_map(|(k, t)| {
+                if k[axis] == i {
+                    Some(([k[ax0], k[ax1]], t.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let fixed_extent = self
+            .fixed_extent
+            .map(|(min, max)| ([min[ax0], min[ax1]], [max[ax0], max[ax1]]));
+
+        Map { data, fixed_extent }
+    }
+
+    pub fn to_vecs(&self) -> Vec<Vec<Vec<Option<T>>>> {
+        let (min, max) = self.get_extent();
+
+        num::iter::range_inclusive(min[0], max[0])
+            .map(|i| {
+                num::iter::range_inclusive(min[1], max[1])
+                    .map(|j| {
+                        num::iter::range_inclusive(min[2], max[2])
+                            .map(|k| self.data.get(&[i, j, k]).cloned())
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }
 
@@ -266,9 +341,9 @@ mod tests {
     #[test]
     fn test_2d_parsing() {
         let map_string = "ab \nd e";
-        let map = Map::<(usize, usize), TestTile>::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<[usize; 2], TestTile>::read(&mut map_string.as_bytes()).unwrap();
 
-        assert_eq!(map.get_extent(), ((0, 0), (1, 2)));
+        assert_eq!(map.get_extent(), ([0, 0], [1, 2]));
 
         assert_eq!(
             map.to_vecs(),
@@ -281,20 +356,20 @@ mod tests {
 
     #[test]
     fn test_2d_editing() {
-        let mut map: Map<(usize, usize), TestTile> = Map::new();
+        let mut map: Map<[usize; 2], TestTile> = Map::new();
 
-        assert_eq!(map.get(&(1, 2)), None);
-        map.set((1, 2), TestTile('a'));
-        assert_eq!(map.get(&(1, 2)), Some(&TestTile('a')));
+        assert_eq!(map.get(&[1, 2]), None);
+        map.set([1, 2], TestTile('a'));
+        assert_eq!(map.get(&[1, 2]), Some(&TestTile('a')));
 
-        map.set((4, 1), TestTile('c'));
-        assert_eq!(map.get_extent(), ((1, 1), (4, 2)));
+        map.set([4, 1], TestTile('c'));
+        assert_eq!(map.get_extent(), ([1, 1], [4, 2]));
 
-        map.set((8, 8), TestTile('d'));
-        assert_eq!(map.get_extent(), ((1, 1), (8, 8)));
+        map.set([8, 8], TestTile('d'));
+        assert_eq!(map.get_extent(), ([1, 1], [8, 8]));
 
-        map.remove(&(8, 8));
-        assert_eq!(map.get_extent(), ((1, 1), (4, 2)));
+        map.remove(&[8, 8]);
+        assert_eq!(map.get_extent(), ([1, 1], [4, 2]));
 
         assert_eq!(
             map.to_vecs(),
@@ -310,11 +385,11 @@ mod tests {
     #[test]
     fn test_2d_display() {
         let map_string = "ab \nd e";
-        let map = Map::<(usize, usize), TestTile>::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<[usize; 2], TestTile>::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(format!("{}", map), format!("{}\n", map_string));
 
-        let map2: Map<(usize, usize), TestTile> = Map::new();
+        let map2: Map<[usize; 2], TestTile> = Map::new();
         assert_eq!(format!("{}", map2), "");
     }
 }
