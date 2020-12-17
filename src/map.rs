@@ -343,6 +343,134 @@ where
     }
 }
 
+////// Code for 4D maps
+
+impl<I> MapCoordinate for [I; 4]
+where
+    I: IntCoord,
+{
+    fn elementwise_min(a: Self, b: Self) -> Self {
+        [
+            std::cmp::min(a[0], b[0]),
+            std::cmp::min(a[1], b[1]),
+            std::cmp::min(a[2], b[2]),
+            std::cmp::min(a[3], b[3]),
+        ]
+    }
+
+    fn elementwise_max(a: Self, b: Self) -> Self {
+        [
+            std::cmp::max(a[0], b[0]),
+            std::cmp::max(a[1], b[1]),
+            std::cmp::max(a[2], b[2]),
+            std::cmp::max(a[3], b[3]),
+        ]
+    }
+}
+
+impl<T, I> Map<[I; 4], T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
+    /// Convert a 3D map to a single-layered 4D map
+    pub fn from_3d(map: &Map<[I; 3], T>) -> Self {
+        let data: HashMap<[I; 4], T> = map
+            .data
+            .iter()
+            .map(|(key, tile)| {
+                let key = [I::zero(), key[0], key[1], key[2]];
+                (key, tile.clone())
+            })
+            .collect();
+
+        Map {
+            data,
+            fixed_extent: None,
+        }
+    }
+
+    /// Slice a 4D map into a 3D map along one dimension
+    pub fn slice(&self, i: I, axis: usize) -> Map<[I; 3], T> {
+        let (ax0, ax1, ax2) = match axis {
+            0 => (1, 2, 3),
+            1 => (0, 2, 3),
+            2 => (0, 1, 3),
+            3 => (0, 1, 2),
+            _ => panic!("Invalid axis: {}", axis),
+        };
+
+        let data: HashMap<[I; 3], T> = self
+            .data
+            .iter()
+            .filter_map(|(k, t)| {
+                if k[axis] == i {
+                    Some(([k[ax0], k[ax1], k[ax2]], t.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let fixed_extent = self.fixed_extent.map(|(min, max)| {
+            (
+                [min[ax0], min[ax1], min[ax2]],
+                [max[ax0], max[ax1], max[ax2]],
+            )
+        });
+
+        Map { data, fixed_extent }
+    }
+
+    pub fn to_vecs(&self) -> Vec<Vec<Vec<Vec<Option<T>>>>> {
+        let (min, max) = self.get_extent();
+
+        num::iter::range_inclusive(min[0], max[0])
+            .map(|i| {
+                num::iter::range_inclusive(min[1], max[1])
+                    .map(|j| {
+                        num::iter::range_inclusive(min[2], max[2])
+                            .map(|k| {
+                                num::iter::range_inclusive(min[3], max[3])
+                                    .map(|l| self.data.get(&[i, j, k, l]).cloned())
+                                    .collect()
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+impl<T, I> std::fmt::Display for Map<[I; 4], T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+        if self.data.is_empty() {
+            return Ok(());
+        }
+
+        let (min, max) = self.get_extent();
+
+        for i in num::iter::range_inclusive(min[0], max[0]) {
+            for j in num::iter::range_inclusive(min[1], max[1]) {
+                write!(
+                    f,
+                    "Layer {}, {} =========\n{}\n",
+                    i,
+                    j,
+                    self.slice(i, 0).slice(j, 0)
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
