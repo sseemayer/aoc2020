@@ -13,7 +13,12 @@ type MapResult<T> = std::result::Result<T, MapError>;
 
 /// Trait for a generic integer coordinate
 pub trait IntCoord:
-    num::PrimInt + num::FromPrimitive + std::fmt::Debug + std::default::Default + std::hash::Hash
+    num::PrimInt
+    + num::FromPrimitive
+    + std::fmt::Debug
+    + std::fmt::Display
+    + std::default::Default
+    + std::hash::Hash
 {
 }
 
@@ -24,6 +29,7 @@ impl<T> IntCoord for T where
         + num::ToPrimitive
         + std::marker::Copy
         + std::fmt::Debug
+        + std::fmt::Display
         + std::default::Default
         + std::hash::Hash
 {
@@ -252,7 +258,7 @@ where
 
 impl<T, I> Map<[I; 3], T>
 where
-    T: ParseMapTile,
+    T: MapTile,
     I: IntCoord,
 {
     /// Convert a 2D map to a single-layered 3D map
@@ -314,6 +320,26 @@ where
                     .collect()
             })
             .collect()
+    }
+}
+
+impl<T, I> std::fmt::Display for Map<[I; 3], T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
+        if self.data.is_empty() {
+            return Ok(());
+        }
+
+        let (min, max) = self.get_extent();
+
+        for i in num::iter::range_inclusive(min[0], max[0]) {
+            write!(f, "Layer {} =========\n{}\n", i, self.slice(i, 0))?;
+        }
+
+        Ok(())
     }
 }
 
