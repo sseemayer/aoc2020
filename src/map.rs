@@ -3,11 +3,21 @@ use std::collections::HashMap;
 use snafu::{ResultExt, Snafu};
 use std::io::{BufRead, BufReader};
 
+#[derive(Debug, Snafu)]
+pub enum MapError {
+    #[snafu(display("I/O error: {}", source))]
+    Io { source: std::io::Error },
+}
+
+type MapResult<T> = std::result::Result<T, MapError>;
+
+/// Trait for a generic integer coordinate
 pub trait IntCoord:
     num::PrimInt + num::FromPrimitive + std::fmt::Debug + std::default::Default + std::hash::Hash
 {
 }
 
+// auto-implement for types that meet requirements
 impl<T> IntCoord for T where
     T: num::PrimInt
         + num::FromPrimitive
@@ -19,10 +29,18 @@ impl<T> IntCoord for T where
 {
 }
 
-pub trait MapTile: std::fmt::Display + Sized + Clone {
+/// Trait for types that can correspond to map tiles
+pub trait MapTile: std::fmt::Display + Sized + Clone {}
+
+// auto-implement for types that meet requirements
+impl<T> MapTile for T where T: std::fmt::Display + Sized + Clone {}
+
+/// Trait for types that can be parsed as a map tile
+pub trait ParseMapTile: MapTile {
     fn from_char(c: char) -> Option<Self>;
 }
 
+/// Trait for a generic map coordinate
 pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone + Copy {
     fn elementwise_min(a: Self, b: Self) -> Self;
     fn elementwise_max(a: Self, b: Self) -> Self;
@@ -74,14 +92,7 @@ where
     }
 }
 
-#[derive(Debug, Snafu)]
-pub enum MapError {
-    #[snafu(display("I/O error: {}", source))]
-    Io { source: std::io::Error },
-}
-
-type MapResult<T> = std::result::Result<T, MapError>;
-
+/// A tile-based map that is generic over coordinates and tiles stored within
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct Map<C: MapCoordinate, T> {
     pub data: HashMap<C, T>,
@@ -157,7 +168,7 @@ impl<C: MapCoordinate, T: Eq> Map<C, T> {
 ////// Code for 2D maps
 impl<T, I> Map<(I, I), T>
 where
-    T: MapTile,
+    T: ParseMapTile,
     I: IntCoord,
 {
     pub fn read<R: std::io::Read>(reader: &mut R) -> MapResult<Self> {
@@ -221,7 +232,7 @@ where
 
 impl<T, I> std::str::FromStr for Map<(I, I), T>
 where
-    T: MapTile,
+    T: ParseMapTile,
     I: IntCoord,
 {
     type Err = MapError;
@@ -237,7 +248,7 @@ mod tests {
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct TestTile(char);
-    impl MapTile for TestTile {
+    impl ParseMapTile for TestTile {
         fn from_char(c: char) -> Option<Self> {
             if c == ' ' {
                 return None;

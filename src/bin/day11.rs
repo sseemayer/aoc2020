@@ -1,10 +1,9 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::File;
 
 use snafu::{ResultExt, Snafu};
 
-use aoc2020::map::{Map, MapError, MapTile};
+use aoc2020::map::{Map, MapError, ParseMapTile};
 
 #[derive(Debug, Snafu)]
 enum Error {
@@ -26,7 +25,7 @@ enum Tile {
     Chair { occupied: bool },
 }
 
-impl MapTile for Tile {
+impl ParseMapTile for Tile {
     fn from_char(c: char) -> Option<Self> {
         match c {
             '.' => Some(Tile::Floor),
