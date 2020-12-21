@@ -240,6 +240,50 @@ where
         })
     }
 
+    pub fn rotate_right(&self) -> Self {
+        let (min, max) = self.get_extent();
+        assert_eq!(min[0], I::zero());
+        assert_eq!(min[1], I::zero());
+
+        let mut out = Map::new();
+
+        //  j 01234    0123
+        // i
+        // 0  abcde    kfa
+        // 1  fghIj    Lgb
+        // 2  kLmno    mhc
+        // 3           nId
+        // 4           oje
+
+        for ([i, j], tile) in self.data.iter() {
+            out.set([*j, max[0] - *i], tile.clone());
+        }
+
+        out
+    }
+
+    pub fn rotate_left(&self) -> Self {
+        let (min, max) = self.get_extent();
+        assert_eq!(min[0], I::zero());
+        assert_eq!(min[1], I::zero());
+
+        let mut out = Map::new();
+
+        //  j 01234    0123
+        // i
+        // 0  abcde    ejo
+        // 1  fghIj    dIn
+        // 2  kLmno    chm
+        // 3           bgL
+        // 4           afk
+
+        for ([i, j], tile) in self.data.iter() {
+            out.set([max[1] - *j, *i], tile.clone());
+        }
+
+        out
+    }
+
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
         let (min, max) = self.get_extent();
 
@@ -644,51 +688,60 @@ where
 mod tests {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, Eq)]
-    struct TestTile(char);
-    impl ParseMapTile for TestTile {
+    impl ParseMapTile for char {
         fn from_char(c: char) -> Option<Self> {
             if c == ' ' {
-                return None;
-            };
-            Some(TestTile(c))
+                None
+            } else {
+                Some(c)
+            }
         }
     }
 
-    impl std::fmt::Display for TestTile {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::result::Result<(), std::fmt::Error> {
-            write!(f, "{}", self.0)
+    fn assert_map_eq<I, T>(a: &Map<[I; 2], T>, b: &Map<[I; 2], T>)
+    where
+        I: IntCoord,
+        T: MapTile + PartialEq,
+    {
+        if a != b {
+            panic!(
+                "Map mismatch:\na (extent {:?}):\n{}\nb (extent {:?}):\n{}",
+                a.get_extent(),
+                a,
+                b.get_extent(),
+                b
+            )
         }
     }
 
     #[test]
     fn test_2d_parsing() {
         let map_string = "ab \nd e";
-        let map = Map::<[usize; 2], TestTile>::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<[usize; 2], char>::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(map.get_extent(), ([0, 0], [1, 2]));
 
         assert_eq!(
             map.to_vecs(),
             vec![
-                vec![Some(TestTile('a')), Some(TestTile('b')), None],
-                vec![Some(TestTile('d')), None, Some(TestTile('e'))],
+                vec![Some('a'), Some('b'), None],
+                vec![Some('d'), None, Some('e')],
             ]
         )
     }
 
     #[test]
     fn test_2d_editing() {
-        let mut map: Map<[usize; 2], TestTile> = Map::new();
+        let mut map: Map<[usize; 2], char> = Map::new();
 
         assert_eq!(map.get(&[1, 2]), None);
-        map.set([1, 2], TestTile('a'));
-        assert_eq!(map.get(&[1, 2]), Some(&TestTile('a')));
+        map.set([1, 2], 'a');
+        assert_eq!(map.get(&[1, 2]), Some(&'a'));
 
-        map.set([4, 1], TestTile('c'));
+        map.set([4, 1], 'c');
         assert_eq!(map.get_extent(), ([1, 1], [4, 2]));
 
-        map.set([8, 8], TestTile('d'));
+        map.set([8, 8], 'd');
         assert_eq!(map.get_extent(), ([1, 1], [8, 8]));
 
         map.remove(&[8, 8]);
@@ -697,10 +750,10 @@ mod tests {
         assert_eq!(
             map.to_vecs(),
             vec![
-                vec![None, Some(TestTile('a'))],
+                vec![None, Some('a')],
                 vec![None, None],
                 vec![None, None],
-                vec![Some(TestTile('c')), None],
+                vec![Some('c'), None],
             ]
         )
     }
@@ -708,11 +761,36 @@ mod tests {
     #[test]
     fn test_2d_display() {
         let map_string = "ab \nd e";
-        let map = Map::<[usize; 2], TestTile>::read(&mut map_string.as_bytes()).unwrap();
+        let map = Map::<[usize; 2], char>::read(&mut map_string.as_bytes()).unwrap();
 
         assert_eq!(format!("{}", map), format!("{}\n", map_string));
 
-        let map2: Map<[usize; 2], TestTile> = Map::new();
+        let map2: Map<[usize; 2], char> = Map::new();
         assert_eq!(format!("{}", map2), "");
+    }
+
+    #[test]
+    fn test_2d_rotating() {
+        //  j 01234    012  0123
+        // i
+        // 0  abcde    kfa  ejo
+        // 1  fghIj    Lgb  dIn
+        // 2  kLmno    mhc  chm
+        // 3           nId  bgL
+        // 4           oje  afk
+
+        let map = "abcde\nfghIj\nkLmno"
+            .parse::<Map<[usize; 2], char>>()
+            .unwrap();
+
+        assert_map_eq(
+            &map.rotate_right(),
+            &"kfa\nLgb\nmhc\nnId\noje".parse().unwrap(),
+        );
+
+        assert_map_eq(
+            &map.rotate_left(),
+            &"ejo\ndIn\nchm\nbgL\nafk".parse().unwrap(),
+        )
     }
 }
