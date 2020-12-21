@@ -48,6 +48,8 @@ pub trait ParseMapTile: MapTile {
 
 /// Trait for a generic map coordinate
 pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clone + Copy {
+    type ExtentIter: Iterator<Item = Self>;
+
     /// Calculate the element-wise minimum of two coordinates.
     /// Used for computing the extent of the map.
     fn elementwise_min(a: Self, b: Self) -> Self;
@@ -67,6 +69,9 @@ pub trait MapCoordinate: Default + Eq + std::hash::Hash + std::fmt::Debug + Clon
 
         (min, max)
     }
+
+    /// Get an iterator spanning all coordinates within an extent
+    fn extent_iterator(min: Self, max: Self) -> Self::ExtentIter;
 }
 
 /// A tile-based map that is generic over coordinates and tiles stored within
@@ -87,6 +92,11 @@ impl<C: MapCoordinate, T> Map<C, T> {
     /// Get the tile at a coordinate
     pub fn get(&self, coord: &C) -> Option<&T> {
         self.data.get(coord)
+    }
+
+    /// Get a mutable reference to a tile at a coordinate
+    pub fn get_mut(&mut self, coord: &C) -> Option<&mut T> {
+        self.data.get_mut(coord)
     }
 
     /// Set the tile at a coordinate
@@ -148,12 +158,60 @@ impl<I> MapCoordinate for [I; 2]
 where
     I: IntCoord,
 {
+    type ExtentIter = Extent2DIterator<I>;
+
     fn elementwise_min(a: Self, b: Self) -> Self {
         [std::cmp::min(a[0], b[0]), std::cmp::min(a[1], b[1])]
     }
 
     fn elementwise_max(a: Self, b: Self) -> Self {
         [std::cmp::max(a[0], b[0]), std::cmp::max(a[1], b[1])]
+    }
+
+    fn extent_iterator(min: Self, max: Self) -> Self::ExtentIter {
+        Extent2DIterator {
+            min,
+            max,
+            current: Some(min.clone()),
+        }
+    }
+}
+
+pub struct Extent2DIterator<I>
+where
+    I: IntCoord,
+{
+    min: [I; 2],
+    max: [I; 2],
+    current: Option<[I; 2]>,
+}
+
+impl<I> Iterator for Extent2DIterator<I>
+where
+    I: IntCoord,
+{
+    type Item = [I; 2];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(c) = self.current {
+            let mut next = c.clone();
+
+            next[0] = next[0] + I::one();
+            if next[0] > self.max[0] {
+                next[0] = self.min[0];
+                next[1] = next[1] + I::one();
+            }
+
+            if next[1] > self.max[1] {
+                self.current = None
+            } else {
+                self.current = Some(next)
+            }
+
+            Some(c)
+        } else {
+            None
+        }
     }
 }
 
@@ -239,6 +297,8 @@ impl<I> MapCoordinate for [I; 3]
 where
     I: IntCoord,
 {
+    type ExtentIter = Extent3DIterator<I>;
+
     fn elementwise_min(a: Self, b: Self) -> Self {
         [
             std::cmp::min(a[0], b[0]),
@@ -253,6 +313,57 @@ where
             std::cmp::max(a[1], b[1]),
             std::cmp::max(a[2], b[2]),
         ]
+    }
+
+    fn extent_iterator(min: Self, max: Self) -> Self::ExtentIter {
+        Extent3DIterator {
+            min,
+            max,
+            current: Some(min.clone()),
+        }
+    }
+}
+
+pub struct Extent3DIterator<I>
+where
+    I: IntCoord,
+{
+    min: [I; 3],
+    max: [I; 3],
+    current: Option<[I; 3]>,
+}
+
+impl<I> Iterator for Extent3DIterator<I>
+where
+    I: IntCoord,
+{
+    type Item = [I; 3];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(c) = self.current {
+            let mut next = c.clone();
+
+            next[0] = next[0] + I::one();
+            if next[0] > self.max[0] {
+                next[0] = self.min[0];
+                next[1] = next[1] + I::one();
+            }
+
+            if next[1] > self.max[1] {
+                next[1] = self.min[1];
+                next[2] = next[2] + I::one();
+            }
+
+            if next[2] > self.max[2] {
+                self.current = None
+            } else {
+                self.current = Some(next)
+            }
+
+            Some(c)
+        } else {
+            None
+        }
     }
 }
 
@@ -349,6 +460,8 @@ impl<I> MapCoordinate for [I; 4]
 where
     I: IntCoord,
 {
+    type ExtentIter = Extent4DIterator<I>;
+
     fn elementwise_min(a: Self, b: Self) -> Self {
         [
             std::cmp::min(a[0], b[0]),
@@ -365,6 +478,62 @@ where
             std::cmp::max(a[2], b[2]),
             std::cmp::max(a[3], b[3]),
         ]
+    }
+
+    fn extent_iterator(min: Self, max: Self) -> Self::ExtentIter {
+        Extent4DIterator {
+            min,
+            max,
+            current: Some(min.clone()),
+        }
+    }
+}
+
+pub struct Extent4DIterator<I>
+where
+    I: IntCoord,
+{
+    min: [I; 4],
+    max: [I; 4],
+    current: Option<[I; 4]>,
+}
+
+impl<I> Iterator for Extent4DIterator<I>
+where
+    I: IntCoord,
+{
+    type Item = [I; 4];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(c) = self.current {
+            let mut next = c.clone();
+
+            next[0] = next[0] + I::one();
+            if next[0] > self.max[0] {
+                next[0] = self.min[0];
+                next[1] = next[1] + I::one();
+            }
+
+            if next[1] > self.max[1] {
+                next[1] = self.min[1];
+                next[2] = next[2] + I::one();
+            }
+
+            if next[2] > self.max[2] {
+                next[2] = self.min[2];
+                next[3] = next[3] + I::one();
+            }
+
+            if next[3] > self.max[3] {
+                self.current = None
+            } else {
+                self.current = Some(next)
+            }
+
+            Some(c)
+        } else {
+            None
+        }
     }
 }
 
