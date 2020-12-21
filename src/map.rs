@@ -284,6 +284,23 @@ where
         out
     }
 
+    pub fn flip(&self, axis: usize) -> Self {
+        let (min, max) = self.get_extent();
+        assert_eq!(min[0], I::zero());
+        assert_eq!(min[1], I::zero());
+
+        let mut out = Map::new();
+
+        for (pos, tile) in self.data.iter() {
+            let mut pos = pos.clone();
+            pos[axis] = max[axis] - pos[axis];
+
+            out.set(pos, tile.clone());
+        }
+
+        out
+    }
+
     pub fn to_vecs(&self) -> Vec<Vec<Option<T>>> {
         let (min, max) = self.get_extent();
 
@@ -770,14 +787,22 @@ mod tests {
     }
 
     #[test]
-    fn test_2d_rotating() {
-        //  j 01234    012  0123
+    fn test_2d_rotating_flipping() {
+        //              R    L
+        //  j 01234    012  012
         // i
         // 0  abcde    kfa  ejo
         // 1  fghIj    Lgb  dIn
         // 2  kLmno    mhc  chm
         // 3           nId  bgL
         // 4           oje  afk
+        //
+        //
+        // FLIP i      FLIP j
+        //
+        //   kLmno     edcba
+        //   fghIj     jIhgf
+        //   abcde     onmLk
 
         let map = "abcde\nfghIj\nkLmno"
             .parse::<Map<[usize; 2], char>>()
@@ -791,6 +816,9 @@ mod tests {
         assert_map_eq(
             &map.rotate_left(),
             &"ejo\ndIn\nchm\nbgL\nafk".parse().unwrap(),
-        )
+        );
+
+        assert_map_eq(&map.flip(0), &"kLmno\nfghIj\nabcde".parse().unwrap());
+        assert_map_eq(&map.flip(1), &"edcba\njIhgf\nonmLk".parse().unwrap());
     }
 }
