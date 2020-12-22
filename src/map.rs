@@ -239,7 +239,13 @@ where
             fixed_extent: None,
         })
     }
+}
 
+impl<T, I> Map<[I; 2], T>
+where
+    T: MapTile,
+    I: IntCoord,
+{
     pub fn rotate_right(&self) -> Self {
         let (min, max) = self.get_extent();
         assert_eq!(min[0], I::zero());
@@ -285,12 +291,9 @@ where
     }
 
     pub fn flip(&self, axis: usize) -> Self {
-        let (min, max) = self.get_extent();
-        assert_eq!(min[0], I::zero());
-        assert_eq!(min[1], I::zero());
+        let (_min, max) = self.get_extent();
 
         let mut out = Map::new();
-
         for (pos, tile) in self.data.iter() {
             let mut pos = pos.clone();
             pos[axis] = max[axis] - pos[axis];
